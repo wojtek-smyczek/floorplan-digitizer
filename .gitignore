@@ -8,7 +8,6 @@ __pycache__/
 .env
 
 # IDE / OS
-.claude/
 .DS_Store
 
 # Models — track trained models so the project works out of the box
