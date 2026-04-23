@@ -5,48 +5,40 @@ import json
 import os
 import numpy as np
 import ezdxf
-from roboflow import Roboflow
+from ultralytics import YOLO
 from torchvision import models
 
-# 1. KONFIGURACJA MODELU I PLIKU WAG
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_PATH = "model_wojtka.pth"
 
 def get_trained_model():
-    # 1. Tworzymy bazę ResNet18
     model = models.resnet18(weights=None)
-    
-    # 2. Dopasowujemy warstwę wejściową (1 kanał)
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-    
-    # 3. Definiujemy warstwę wyjściową IDENTYCZNIE jak w trainer.py
     num_ftrs = model.fc.in_features
     model.fc = nn.Sequential(
-        nn.Dropout(0.5),           # To jest kluczowe!
-        nn.Linear(num_ftrs, 10)    # To są brakujące "fc.1.weight" i "fc.1.bias"
+        nn.Dropout(0.5),
+        nn.Linear(num_ftrs, 10)
     )
-    
     model.to(device)
 
-    # 4. Ładowanie wag
     if os.path.exists(MODEL_PATH):
-        print(f"--- Ładowanie modelu Twojego pisma (z Dropout): {MODEL_PATH} ---")
-        # Załadowanie wag do nowej struktury Sequential
+        print(f"--- Ładowanie modelu: {MODEL_PATH} ---")
         model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     else:
         print(f"BŁĄD: Nie znaleziono pliku {MODEL_PATH}!")
         exit()
-    
-    model.eval() # PAMIĘTAJ: To wyłącza Dropout na potrzeby rozpoznawania
+
+    model.eval()
     return model
 model_ai = get_trained_model()
 
-# 2. KONFIGURACJA ROBOFLOW
-rf = Roboflow(api_key='ITGmB9QXokUotWH0cwtf')
-project = rf.workspace("python-hegfw").project("my-first-project-gpcqz")
-model_yolo = project.version(5).model
+YOLO_MODEL_PATH = "yolo_floorplan.pt"
+if not os.path.exists(YOLO_MODEL_PATH):
+    print(f"BŁĄD: Nie znaleziono modelu YOLO: {YOLO_MODEL_PATH}")
+    print("Wytrenuj model: python train_yolo.py")
+    exit()
+model_yolo = YOLO(YOLO_MODEL_PATH)
 
-# 3. NMS DLA DETEKCJI DIMENSION_VALUE
 def nms_dimension_values(predictions, overlap_threshold=0.3):
     """Usuwa nakładające się detekcje dimension_value (Non-Maximum Suppression).
     Używa intersection/min_area zamiast IoU — lepiej łapie częściowe nakładanie."""
@@ -56,7 +48,6 @@ def nms_dimension_values(predictions, overlap_threshold=0.3):
     if len(dim_vals) == 0:
         return predictions
 
-    # Sortuj po confidence malejąco
     dim_vals.sort(key=lambda p: p['confidence'], reverse=True)
 
     kept = []
@@ -81,12 +72,10 @@ def nms_dimension_values(predictions, overlap_threshold=0.3):
                 candidate_area = cw * ch
                 selected_area = sw * sh
                 min_area = min(candidate_area, selected_area)
-                # intersection / mniejszy box — łapie gdy mały box jest "w środku" większego
                 overlap_ratio = inter_area / min_area
 
                 if overlap_ratio > overlap_threshold:
                     is_duplicate = True
-                    # Rozszerz wybrany box do unii obu boxów
                     selected['x'] = (min(cx1, sx1) + max(cx2, sx2)) / 2
                     selected['y'] = (min(cy1, sy1) + max(cy2, sy2)) / 2
                     selected['width'] = max(cx2, sx2) - min(cx1, sx1)
@@ -125,7 +114,6 @@ def merge_adjacent_dimension_values(predictions):
             bx1, by1 = b['x'] - b['width']/2, b['y'] - b['height']/2
             bx2, by2 = b['x'] + b['width']/2, b['y'] + b['height']/2
 
-            # Na tej samej linii Y (overlap pionowy) i blisko w X
             y_overlap = min(ay2, by2) - max(ay1, by1)
             min_h = min(a['height'], b['height'])
             x_gap = max(bx1 - ax2, ax1 - bx2, 0)
@@ -134,20 +122,17 @@ def merge_adjacent_dimension_values(predictions):
             if y_overlap > min_h * 0.5 and x_gap < max_w * 0.5:
                 group.append(b)
                 used.add(j)
-                # Rozszerz bbox A o B
                 ax1 = min(ax1, bx1)
                 ay1 = min(ay1, by1)
                 ax2 = max(ax2, bx2)
                 ay2 = max(ay2, by2)
 
         if len(group) > 1:
-            # Scal w jeden bbox — wartość zostanie przeliczona przez OCR
             merged_entry = dict(group[0])
             merged_entry['x'] = (ax1 + ax2) / 2
             merged_entry['y'] = (ay1 + ay2) / 2
             merged_entry['width'] = ax2 - ax1
             merged_entry['height'] = ay2 - ay1
-            # Usuń starą wartość — OCR przeliczy na scalonym bbox
             if 'value' in merged_entry:
                 del merged_entry['value']
             merged.append(merged_entry)
@@ -157,7 +142,6 @@ def merge_adjacent_dimension_values(predictions):
 
     return merged + others
 
-# 4. FUNKCJA SEGMENTUJĄCA (Ujednolicona z dataset_creator)
 def _pad_and_resize(digit_crop):
     """Pad do kwadratu i resize do 64x64."""
     h, w = digit_crop.shape
@@ -172,7 +156,6 @@ def segment_digits(thresh_roi):
     column_sums = cv2.reduce(thresh_roi, 0, cv2.REDUCE_SUM, dtype=cv2.CV_32S)[0]
     roi_h = thresh_roi.shape[0]
 
-    # Krok 1: Znajdź surowe segmenty (ciągłe zakresy z pikseli > 0)
     raw_segments = []
     in_digit = False
     start_col = 0
@@ -187,27 +170,21 @@ def segment_digits(thresh_roi):
     if in_digit and thresh_roi.shape[1] - start_col >= 3:
         raw_segments.append((start_col, thresh_roi.shape[1]))
 
-    # Krok 2: Dla każdego segmentu sprawdź czy trzeba podzielić
-    # (szukaj lokalnych minimów kolumn jako potencjalnych granic cyfr)
     final_segments = []
     for seg_start, seg_end in raw_segments:
         seg_w = seg_end - seg_start
         if seg_w < roi_h * 0.15:
-            continue  # za wąski — szum
+            continue
 
         seg_sums = column_sums[seg_start:seg_end]
         max_sum = max(seg_sums)
 
-        # Jeśli segment jest szeroki, spróbuj znaleźć wewnętrzne minimum do podziału
-        # Typowa cyfra ma szerokość ~0.4-0.7x wysokości ROI
         if seg_w > roi_h * 0.9:
-            # Szukaj najgłębszego lokalnego minimum w środkowej części segmentu
-            margin = int(seg_w * 0.2)  # nie dziel zbyt blisko krawędzi
+            margin = int(seg_w * 0.2)
             search_zone = seg_sums[margin:seg_w - margin]
             if len(search_zone) > 0:
                 min_idx = int(np.argmin(search_zone)) + margin
                 min_val = seg_sums[min_idx]
-                # Podziel jeśli minimum jest <50% maksimum
                 if min_val < max_sum * 0.5:
                     split_x = seg_start + min_idx
                     final_segments.append((seg_start, split_x))
@@ -216,7 +193,6 @@ def segment_digits(thresh_roi):
 
         final_segments.append((seg_start, seg_end))
 
-    # Krok 3: Konwertuj segmenty na obrazki
     digits_images = []
     for seg_start, seg_end in final_segments:
         digit_crop = thresh_roi[:, seg_start:seg_end]
@@ -224,7 +200,27 @@ def segment_digits(thresh_roi):
             digits_images.append(_pad_and_resize(digit_crop))
     return digits_images
 
-# 4. GŁÓWNY PROCES PRZETWARZANIA
+def yolo_to_roboflow_format(results):
+    """Konwertuje wynik Ultralytics YOLO do formatu słownikowego
+    kompatybilnego z dalszym pipeline'em (centrum + wymiary)."""
+    predictions = []
+    for result in results:
+        boxes = result.boxes
+        names = result.names
+        for i in range(len(boxes)):
+            x1, y1, x2, y2 = boxes.xyxy[i].tolist()
+            cls_id = int(boxes.cls[i].item())
+            conf = float(boxes.conf[i].item())
+            predictions.append({
+                'x': (x1 + x2) / 2,
+                'y': (y1 + y2) / 2,
+                'width': x2 - x1,
+                'height': y2 - y1,
+                'class': names[cls_id],
+                'confidence': conf,
+            })
+    return predictions
+
 image_path = 'test.jpg'
 image = cv2.imread(image_path)
 
@@ -232,12 +228,9 @@ if image is None:
     print(f"Błąd: Nie znaleziono pliku {image_path}")
     exit()
 
-prediction = model_yolo.predict(image_path, confidence=25).json()
-
-# Aplikuj NMS aby usunąć nakładające się detekcje dimension_value
-raw_predictions = prediction.get('predictions', [])
+results = model_yolo.predict(image_path, conf=0.25, verbose=False)
+raw_predictions = yolo_to_roboflow_format(results)
 filtered_predictions = nms_dimension_values(raw_predictions)
-# Scala sąsiednie detekcje dimension_value (np. "1" + "100" → "1100")
 filtered_predictions = merge_adjacent_dimension_values(filtered_predictions)
 print(f"Detekcje: {len(raw_predictions)} surowych -> {len(filtered_predictions)} po NMS+merge")
 
@@ -254,14 +247,12 @@ for i, obj in enumerate(filtered_predictions):
     x2, y2 = int(x + w/2), int(y + h/2)
 
     if klasa == 'dimension_value':
-        # Dodaj padding do bounding boxa żeby nie obcinać cyfr na krawędziach
         pad = 10
         img_h, img_w = image.shape[:2]
         roi = image[max(0, y1-pad):min(img_h, y2+pad), max(0, x1-pad):min(img_w, x2+pad)]
         
         if roi.size > 0:
             red_channel = roi[:, :, 2]
-            # Próg 50 (zgodny z Twoimi testami)
             _, thresh = cv2.threshold(red_channel, 50, 255, cv2.THRESH_BINARY)
             
             digit_imgs = segment_digits(thresh)
@@ -295,40 +286,30 @@ for i, obj in enumerate(filtered_predictions):
 
     final_results.append(obj)
 
-# 5. ZAPIS DO PLIKU
 with open('dane_projektu.json', 'w') as f:
     json.dump(final_results, f, indent=4)
 
 print("\nGotowe! Wszystkie wyniki znajdziesz w dane_projektu.json")
 
-# 6. EKSPORT ŚCIAN DO DXF
 print("\n--- Eksport DXF ---")
 
-img_height = image.shape[0]
-
-# Klasyfikacja orientacji: H (poziomy) jeśli width/height > 1.5, inaczej V (pionowy)
 def get_orientation(obj):
     return 'H' if obj['width'] / obj['height'] > 1.5 else 'V'
 
-# Dystans euklidesowy między centrami bboxów
 def center_dist(a, b):
     return ((a['x'] - b['x'])**2 + (a['y'] - b['y'])**2) ** 0.5
 
-# Podział obiektów na kategorie
 walls = [o for o in final_results if o['class'] == 'wall']
 dim_values = [o for o in final_results if o['class'] == 'dimension_value' and 'value' in o]
 
 print(f"Znaleziono: {len(walls)} ścian, {len(dim_values)} wartości wymiarów")
 
-# Krok 2: Budowanie list ścian i grafu połączeń
-
 doc = ezdxf.new('R2010')
 msp = doc.modelspace()
 
-SNAP_DIST = max(200, int(max(image.shape[:2]) * 0.15))  # adaptacyjny próg tolerancji
+SNAP_DIST = max(200, int(max(image.shape[:2]) * 0.15))
 print(f"SNAP_DIST = {SNAP_DIST}px (obraz: {image.shape[1]}x{image.shape[0]})")
 
-# Posortowane listy ścian (bez przypisanego wymiaru — wymiary idą do luk)
 v_walls_list = []
 h_walls_list = []
 for w_idx, w in enumerate(walls):
@@ -351,8 +332,6 @@ v_labels = [f"x={v['px_x']:.0f}" for v in v_walls_list]
 h_labels = [f"y={h['px_y']:.0f}" for h in h_walls_list]
 print(f"\nŚciany V (lewa→prawa): {v_labels}")
 print(f"Ściany H (góra→dół):   {h_labels}")
-
-# --- Znajdź ścianę V/H najbliższą endpointowi ---
 
 def find_v_at_h_endpoint(hw, endpoint):
     """Znajdź indeks V wall najbliższej endpointowi H wall."""
@@ -380,9 +359,8 @@ def find_h_at_v_endpoint(vw, endpoint):
             best_hi = hi
     return best_hi
 
-# --- Buduj graf połączeń ---
-h_conn = {}  # hi -> (left_vi, right_vi)
-v_conn = {}  # vi -> (top_hi, bottom_hi)
+h_conn = {}
+v_conn = {}
 
 for hi, hw in enumerate(h_walls_list):
     h_conn[hi] = (find_v_at_h_endpoint(hw, 'left'), find_v_at_h_endpoint(hw, 'right'))
@@ -394,10 +372,9 @@ for vi, vw in enumerate(v_walls_list):
     th, bh = v_conn[vi]
     print(f"  V[{vi}] x={vw['px_x']:.0f}: góra→H[{th}] dół→H[{bh}]")
 
-# --- Krok 3: Identyfikacja luk (gaps) między kolejnymi równoległymi ścianami ---
 print("\n--- Identyfikacja luk (gaps) ---")
 
-h_gaps = []  # luki poziome: odległości między kolejnymi V walls
+h_gaps = []
 for i in range(n_v - 1):
     gap = {
         'left_vi': i, 'right_vi': i + 1,
@@ -409,7 +386,7 @@ for i in range(n_v - 1):
     h_gaps.append(gap)
     print(f"  H gap {i}: V[{i}]↔V[{i+1}] px=[{gap['px_left']:.0f}, {gap['px_right']:.0f}] span={gap['px_span']:.0f}")
 
-v_gaps = []  # luki pionowe: odległości między kolejnymi H walls
+v_gaps = []
 for j in range(n_h - 1):
     gap = {
         'top_hi': j, 'bottom_hi': j + 1,
@@ -421,31 +398,25 @@ for j in range(n_h - 1):
     v_gaps.append(gap)
     print(f"  V gap {j}: H[{j}]↔H[{j+1}] px=[{gap['px_top']:.0f}, {gap['px_bottom']:.0f}] span={gap['px_span']:.0f}")
 
-# --- Krok 4: Dopasowanie dim_value → gap (scoring + greedy) ---
 print("\n--- Dopasowanie wymiarów do luk ---")
 
-MARGIN = max(image.shape[:2]) * 0.05  # margines na zakres pozycji
-
-# Zbierz kandydatów: (score, gap_type, gap_idx, dv_idx)
+MARGIN = max(image.shape[:2]) * 0.05
 candidates = []
 for dv_idx, dv in enumerate(dim_values):
     dv_x, dv_y = dv['x'], dv['y']
 
-    # Dopasuj do H gaps (dim_value.x w zakresie V[i].px_x .. V[i+1].px_x)
     for g_idx, gap in enumerate(h_gaps):
         if gap['px_left'] - MARGIN <= dv_x <= gap['px_right'] + MARGIN:
             dist = abs(dv_x - gap['px_center'])
             score = dist / max(gap['px_span'], 1)
             candidates.append((score, 'H', g_idx, dv_idx))
 
-    # Dopasuj do V gaps (dim_value.y w zakresie H[j].px_y .. H[j+1].px_y)
     for g_idx, gap in enumerate(v_gaps):
         if gap['px_top'] - MARGIN <= dv_y <= gap['px_bottom'] + MARGIN:
             dist = abs(dv_y - gap['px_center'])
             score = dist / max(gap['px_span'], 1)
             candidates.append((score, 'V', g_idx, dv_idx))
 
-# Greedy: najlepszy score wygrywa, bez duplikatów (1 dim_value → 1 gap)
 candidates.sort(key=lambda c: c[0])
 h_gap_values = [None] * len(h_gaps)
 v_gap_values = [None] * len(v_gaps)
@@ -479,7 +450,6 @@ for dv_idx, dv in enumerate(dim_values):
 print(f"H gap values: {h_gap_values}")
 print(f"V gap values: {v_gap_values}")
 
-# --- Pixel fallback: proporcja z known gaps dla luk bez wartości ---
 known_h_scales = []
 for i, gap in enumerate(h_gaps):
     if h_gap_values[i] is not None and gap['px_span'] > 0:
@@ -502,17 +472,14 @@ if known_v_scales:
             v_gap_values[j] = v_gaps[j]['px_span'] * avg_v_scale
             print(f"  Pixel fallback: V gap {j} = {v_gap_values[j]:.1f} (scale={avg_v_scale:.4f})")
 
-# --- Krok 5: Sekwencyjne wyznaczanie pozycji ---
 print("\n--- Pozycje DXF (sekwencyjne) ---")
 
-# V walls: pozycje X (lewa→prawa, V[0]=0)
 v_x = [None] * n_v
 v_x[0] = 0.0
 for i in range(len(h_gaps)):
     if v_x[i] is not None and h_gap_values[i] is not None:
         v_x[i + 1] = v_x[i] + h_gap_values[i]
 
-# H walls: pozycje Y (dół→góra, H[last]=0)
 h_y = [None] * n_h
 if n_h > 0:
     h_y[n_h - 1] = 0.0
@@ -523,7 +490,6 @@ for j in range(len(v_gaps) - 1, -1, -1):
 print(f"v_x = {v_x}")
 print(f"h_y = {h_y}")
 
-# --- Krok 6: Rysowanie ścian ---
 print("\n--- Rysowanie ścian ---")
 drawn = 0
 
@@ -534,14 +500,12 @@ for hi, hw in enumerate(h_walls_list):
         continue
     lv, rv = h_conn[hi]
 
-    # Wyznacz x1 (lewy koniec) — z pozycji lewej V wall
     if lv is not None and v_x[lv] is not None:
         x1 = v_x[lv]
     else:
         print(f"  POMINIĘTO H[{hi}] (brak lewej V wall z pozycją)")
         continue
 
-    # Wyznacz x2 (prawy koniec) — z pozycji prawej V wall
     if rv is not None and v_x[rv] is not None:
         x2 = v_x[rv]
     else:
@@ -559,14 +523,12 @@ for vi, vw in enumerate(v_walls_list):
         continue
     th, bh = v_conn[vi]
 
-    # Wyznacz y1 (dolny koniec) — z pozycji dolnej H wall
     if bh is not None and h_y[bh] is not None:
         y1 = h_y[bh]
     else:
         print(f"  POMINIĘTO V[{vi}] (brak dolnej H wall z pozycją)")
         continue
 
-    # Wyznacz y2 (górny koniec) — z pozycji górnej H wall
     if th is not None and h_y[th] is not None:
         y2 = h_y[th]
     else:
@@ -577,7 +539,6 @@ for vi, vw in enumerate(v_walls_list):
     print(f"  DXF V[{vi}]: ({x:.1f}, {y1:.1f}) → ({x:.1f}, {y2:.1f})  [długość={abs(y2-y1):.1f}]")
     drawn += 1
 
-# --- Krok 7: Domknięcie — otwarte końce ścian → łącz brakującą ścianą ---
 unassigned_dvs = [dv for dv_idx, dv in enumerate(dim_values) if dv_idx not in used_dvs]
 
 if unassigned_dvs:
@@ -585,7 +546,6 @@ if unassigned_dvs:
 
     open_endpoints = []
 
-    # V walls z otwartym końcem: znajdź najbliższy nieprzypisany wymiar jako długość
     for vi, vw in enumerate(v_walls_list):
         x = v_x[vi]
         if x is None:
@@ -594,10 +554,9 @@ if unassigned_dvs:
         has_top = (th is not None and h_y[th] is not None)
         has_bottom = (bh is not None and h_y[bh] is not None)
 
-        if has_top == has_bottom:  # obie strony znane lub obie nieznane — pomiń
+        if has_top == has_bottom:
             continue
 
-        # Znajdź najbliższy nieprzypisany wymiar
         best_dv, best_dist = None, float('inf')
         for dv in unassigned_dvs:
             d = ((vw['px_x'] - dv['x'])**2 + (vw['px_y'] - dv['y'])**2) ** 0.5
@@ -617,7 +576,6 @@ if unassigned_dvs:
             open_endpoints.append({'x': x, 'y': bot_y, 'type': 'V', 'idx': vi, 'side': 'bottom'})
             print(f"  V[{vi}] otwarta u dołu: ({x:.1f}, {bot_y:.1f}) [użyto dim={val}]")
 
-    # H walls z otwartym końcem
     for hi, hw in enumerate(h_walls_list):
         y = h_y[hi]
         if y is None:
@@ -648,9 +606,7 @@ if unassigned_dvs:
             open_endpoints.append({'x': left_x, 'y': y, 'type': 'H', 'idx': hi, 'side': 'left'})
             print(f"  H[{hi}] otwarta z lewej: ({left_x:.1f}, {y:.1f}) [użyto dim={val}]")
 
-    Y_TOL = 50  # tolerancja dopasowania pozycji Y/X otwartych końców
-
-    # Paruj otwarte końce V walls na tej samej wysokości → łącz ścianą H
+    Y_TOL = 50
     v_open = [ep for ep in open_endpoints if ep['type'] == 'V']
     for i in range(len(v_open)):
         for j in range(i + 1, len(v_open)):
@@ -667,7 +623,6 @@ if unassigned_dvs:
                 label = f", wymiar={match[0]['value']}" if match else ""
                 print(f"  DOMKNIĘCIE H: ({x1_conn:.1f}, {y_conn:.1f}) → ({x2_conn:.1f}, {y_conn:.1f})  [długość={length:.1f}{label}]")
 
-    # Paruj otwarte końce H walls na tej samej pozycji X → łącz ścianą V
     h_open = [ep for ep in open_endpoints if ep['type'] == 'H']
     for i in range(len(h_open)):
         for j in range(i + 1, len(h_open)):

@@ -7,11 +7,9 @@ import os
 import random
 
 def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'):
-    # 1. Konfiguracja sprzętowa
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używam urządzenia: {device}")
 
-    # 2. Augmentacja — wzmocniona wersja
     user_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((64, 64)),
@@ -23,7 +21,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
         transforms.ToTensor(),
     ])
 
-    # Transform dla MNIST (28x28 → 64x64, białe-na-czarnym jak user data)
     mnist_transform = transforms.Compose([
         transforms.Resize((64, 64)),
         transforms.RandomRotation(25),
@@ -33,7 +30,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
         transforms.ToTensor(),
     ])
 
-    # Transform do ewaluacji (bez augmentacji)
     eval_transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((64, 64)),
@@ -45,7 +41,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
         transforms.ToTensor(),
     ])
 
-    # 3. Ładowanie danych użytkownika
     if not os.path.exists(data_dir):
         print(f"BŁĄD: Folder {data_dir} nie istnieje! Najpierw przygotuj zdjęcia.")
         return
@@ -53,7 +48,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
     user_dataset_train = datasets.ImageFolder(data_dir, transform=user_transform)
     user_dataset_eval = datasets.ImageFolder(data_dir, transform=eval_transform)
 
-    # Podział danych użytkownika (80% trening, 20% test)
     user_train_size = int(0.8 * len(user_dataset_train))
     user_test_size = len(user_dataset_train) - user_train_size
     generator = torch.Generator().manual_seed(42)
@@ -65,7 +59,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
 
     print(f"Dane użytkownika: {len(user_train)} trening, {len(user_test)} test")
 
-    # 4. Ładowanie MNIST (podzbiór 5000 próbek)
     print("Pobieranie MNIST...")
     mnist_full = datasets.MNIST(root='./mnist_data', train=True, download=True, transform=mnist_transform)
     mnist_eval_full = datasets.MNIST(root='./mnist_data', train=True, download=True, transform=eval_mnist_transform)
@@ -77,7 +70,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
 
     print(f"MNIST: {len(mnist_train)} próbek (podzbiór z 60000)")
 
-    # 5. Definicja modelu
     model = models.resnet18(weights=None)
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
     num_ftrs = model.fc.in_features
@@ -89,17 +81,13 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
 
     criterion = nn.CrossEntropyLoss()
 
-    # 6. Test loader (tylko dane użytkownika — to jest nasz cel)
     test_loader = DataLoader(user_test, batch_size=16, shuffle=False)
 
-    # =============================================
-    # FAZA 1: Pretrain na MNIST + dane użytkownika
-    # =============================================
+    # === FAZA 1: Pretrain na MNIST + dane użytkownika ===
     print("\n=== FAZA 1: Pretrain (MNIST + dane użytkownika) ===")
 
     combined_dataset = ConcatDataset([user_train, mnist_train])
 
-    # WeightedRandomSampler: dane użytkownika 5x ważniejsze
     weights = []
     user_weight = 5.0
     mnist_weight = 1.0
@@ -128,7 +116,6 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
             optimizer.step()
             running_loss += loss.item()
 
-        # Ewaluacja na danych użytkownika
         model.eval()
         correct = 0
         total = 0
@@ -152,12 +139,9 @@ def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'
 
     print(f"Faza 1 zakończona. Najlepsza celność: {best_acc:.2f}%")
 
-    # =============================================
-    # FAZA 2: Finetune TYLKO na danych użytkownika
-    # =============================================
+    # === FAZA 2: Finetune TYLKO na danych użytkownika ===
     print("\n=== FAZA 2: Finetune (tylko dane użytkownika) ===")
 
-    # Załaduj najlepszy model z fazy 1
     model.load_state_dict(torch.load(save_path, map_location=device))
 
     user_train_loader = DataLoader(user_train, batch_size=16, shuffle=True)

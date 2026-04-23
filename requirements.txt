@@ -1,0 +1,6 @@
+opencv-python==4.13.0.92
+torch==2.10.0
+torchvision==0.25.0
+numpy==2.4.2
+ezdxf==1.4.3
+ultralytics>=8.0.0
