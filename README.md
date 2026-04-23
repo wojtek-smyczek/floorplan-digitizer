@@ -1,4 +1,4 @@
-# Inwentaryzacja rzutu architektonicznego
+# ArchiAI — automatyczna konwersja rzutów do DXF
 
 Projekt konwertuje ręcznie rysowane uproszczone rzuty mieszkań i obiektów architektonicznych na pliki w formacie DXF, gotowe do otwarcia w programach CAD (AutoCAD, BricsCAD itp.).
 
