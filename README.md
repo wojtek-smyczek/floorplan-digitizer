@@ -4,6 +4,16 @@ Projekt konwertuje ręcznie rysowane uproszczone rzuty mieszkań i obiektów arc
 
 Projekt realizowany w ramach kursu Pythona na Uniwersytecie Jagiellońskim.
 
+## Motywacja
+
+Jako architekt regularnie wykonuję inwentaryzacje architektoniczne — jednym z pierwszych etapów jest pomiar całego obiektu lub lokalu, a następnie ręczne szkicowanie rzutu na iPadzie lub kartce A4. Taki szkic trzeba potem ręcznie przepisać do programu CAD, co jest żmudne i czasochłonne. Chciałem zautomatyzować ten drugi krok — konwersję odręcznego szkicu z wymiarami bezpośrednio do pliku DXF.
+
+![Rzeczywisty rzut inwentaryzacyjny](docs/rysunek.png)
+
+| Wejście (szkic odręczny) | Wyjście (plik DXF w CAD-zie) |
+|:---:|:---:|
+| ![Szkic wejściowy](docs/input.jpg) | ![Wygenerowany DXF](docs/output.png) |
+
 ## Proces tworzenia
 
 **Zbieranie danych** — ręcznie narysowałem 63 uproszczonych rzutów zawierających trzy klasy obiektów (`wall`, `dimension_line`, `dimension_value`), a następnie zanotowałem je (bounding boxy + etykiety) w serwisie Roboflow.
