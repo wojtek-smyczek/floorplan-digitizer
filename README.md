@@ -6,7 +6,7 @@ Projekt realizowany w ramach kursu Pythona na Uniwersytecie Jagiellońskim.
 
 ## Motywacja
 
-Jako architekt regularnie wykonuję inwentaryzacje architektoniczne — jednym z pierwszych etapów jest pomiar całego obiektu lub lokalu, a następnie ręczne szkicowanie rzutu na iPadzie lub kartce A4. Taki szkic trzeba potem ręcznie przepisać do programu CAD, co jest żmudne i czasochłonne. Chciałem zautomatyzować ten drugi krok — konwersję odręcznego szkicu z wymiarami bezpośrednio do pliku DXF.
+Jako architekt regularnie wykonuję inwentaryzacje architektoniczne, jednym z pierwszych etapów jest pomiar całego obiektu lub lokalu, a następnie ręczne szkicowanie rzutu na iPadzie lub kartce A4. Taki szkic trzeba potem ręcznie przepisać do programu CAD, co jest żmudne i czasochłonne. Chciałem zautomatyzować ten drugi krok, konwersję odręcznego szkicu z wymiarami bezpośrednio do pliku DXF.
 
 ![Rzeczywisty rzut inwentaryzacyjny](docs/rysunek.png)
 
