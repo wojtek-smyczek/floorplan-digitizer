@@ -9,7 +9,7 @@ __pycache__/
 
 # IDE / OS
 .DS_Store
-CLAUDE.md
+
 
 # Models — track trained models so the project works out of the box
 # digit_ocr_resnet18.pth (~43 MB) and yolo_floorplan.pt (~6 MB) are committed
