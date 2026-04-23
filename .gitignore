@@ -11,7 +11,7 @@ __pycache__/
 .DS_Store
 
 # Models — track trained models so the project works out of the box
-# model_wojtka.pth (~43 MB) and yolo_floorplan.pt (~6 MB) are committed
+# digit_ocr_resnet18.pth (~43 MB) and yolo_floorplan.pt (~6 MB) are committed
 
 # YOLO training runs
 runs/

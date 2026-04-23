@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, random_split, ConcatDataset, WeightedRa
 import os
 import random
 
-def train_professional_model(data_dir='my_dataset', save_path='model_wojtka.pth'):
+def train_professional_model(data_dir='my_dataset', save_path='digit_ocr_resnet18.pth'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używam urządzenia: {device}")
 

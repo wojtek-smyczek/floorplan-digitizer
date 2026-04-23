@@ -4,7 +4,7 @@ import torch.nn as nn
 from torchvision import models
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MODEL_PATH = "model_wojtka.pth"
+MODEL_PATH = "digit_ocr_resnet18.pth"
 
 
 def get_trained_model():

@@ -68,7 +68,7 @@ projekt-1-inwentaryzacja/
 ├── dataset_creator.py # Tworzenie datasetu z kart z cyframi
 ├── requirements.txt # Zależności Pythona
 ├── test.jpg # Przykładowy rzut do przetworzenia
-├── model_wojtka.pth # Wytrenowany model ResNet18 (~43 MB)
+├── digit_ocr_resnet18.pth # Wytrenowany model ResNet18 (~43 MB)
 ├── yolo_floorplan.pt # Wytrenowany model YOLOv8 (lokalny)
 ├── dane_projektu.json # Wynik detekcji YOLO (bounding boxy, klasy, wartości)
 ├── rzut.dxf # Wygenerowany plik CAD
@@ -131,7 +131,7 @@ Trening przebiega w dwóch fazach:
 - Regularyzacja: Dropout(0.5)
 - Augmentacja danych: rotacja, pochylenie, perspektywa, rozmycie, zmiana jasności
 
-Wynik: plik `model_wojtka.pth`.
+Wynik: plik `digit_ocr_resnet18.pth`.
 
 ## Uruchomienie głównego pipeline'u
 
@@ -200,7 +200,7 @@ Generowanie pliku CAD z odcinkami reprezentującymi ściany, kompatybilnego z Au
 | Plik                 | Typ     | Opis                                       |
 | -------------------- | ------- | ------------------------------------------ |
 | `test.jpg`           | wejście | Zdjęcie/skan rzutu architektonicznego      |
-| `model_wojtka.pth`   | model   | Wytrenowany model ResNet18 do OCR          |
+| `digit_ocr_resnet18.pth`   | model   | Wytrenowany model ResNet18 do OCR          |
 | `dane_projektu.json` | wyjście | Wyniki detekcji YOLO + rozpoznane wartości |
 | `rzut.dxf`           | wyjście | Zrekonstruowany rzut w formacie CAD        |
 | `debug_digits/`      | wyjście | Obrazy debugowe wycietych cyfr             |
