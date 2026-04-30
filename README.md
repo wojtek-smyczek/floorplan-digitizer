@@ -1,216 +1,213 @@
-# ArchiAI — automatyczna konwersja rzutów do DXF
+# ArchiAI — Automatic Floor Plan to DXF Conversion
 
-Projekt konwertuje ręcznie rysowane uproszczone rzuty mieszkań i obiektów architektonicznych na pliki w formacie DXF, gotowe do otwarcia w programach CAD (AutoCAD, BricsCAD itp.).
+A project that converts hand-drawn simplified floor plans of apartments and architectural objects into DXF files, ready to open in CAD software (AutoCAD, BricsCAD, etc.).
 
-Projekt realizowany w ramach kursu Pythona na Uniwersytecie Jagiellońskim.
+Developed as part of a Python course at the Jagiellonian University.
 
-## Motywacja
+## Motivation
 
-Jako architekt regularnie wykonuję inwentaryzacje architektoniczne, jednym z pierwszych etapów jest pomiar całego obiektu lub lokalu, a następnie ręczne szkicowanie rzutu na iPadzie lub kartce A4. Taki szkic trzeba potem ręcznie przepisać do programu CAD, co jest żmudne i czasochłonne. Chciałem zautomatyzować ten drugi krok, konwersję odręcznego szkicu z wymiarami bezpośrednio do pliku DXF.
+As an architect, I regularly conduct architectural surveys. One of the first steps is measuring the entire building or unit, then hand-sketching the floor plan on an iPad or A4 sheet. That sketch then has to be manually redrawn in CAD software — a tedious and time-consuming process. I wanted to automate this second step: converting a hand-drawn sketch with dimensions directly into a DXF file.
 
-![Rzeczywisty rzut inwentaryzacyjny](docs/rysunek.png)
+![Real survey floor plan](docs/rysunek.png)
 
-| Wejście (szkic odręczny) | Wyjście (plik DXF w CAD-zie) |
+| Input (hand-drawn sketch) | Output (DXF file in CAD) |
 |:---:|:---:|
-| ![Szkic wejściowy](docs/input.jpg) | ![Wygenerowany DXF](docs/output.png) |
+| ![Input sketch](docs/input.jpg) | ![Generated DXF](docs/output.png) |
 
-## Proces tworzenia
+## Development Process
 
-**Zbieranie danych** — ręcznie narysowałem 63 uproszczonych rzutów zawierających trzy klasy obiektów (`wall`, `dimension_line`, `dimension_value`), a następnie zanotowałem je (bounding boxy + etykiety) w serwisie Roboflow.
+**Data collection** — I manually drew 63 simplified floor plans containing three object classes (`wall`, `dimension_line`, `dimension_value`), then annotated them (bounding boxes + labels) using Roboflow.
 
-**OCR cyfr** — przygotowałem własny dataset ~1000 odręcznie napisanych cyfr (po ~100 na cyfrę 0–9). Sam model dawał niezadowalające wyniki, więc połączyłem go z popularnym zbiorem MNIST (60 000 próbek) w dwufazowym treningu (pretrain + fine-tune), co znacząco poprawiło dokładność.
+**Digit OCR** — I prepared a custom dataset of ~1,000 hand-written digits (~100 per digit, 0–9). The model alone gave unsatisfactory results, so I combined it with the popular MNIST dataset (60,000 samples) in a two-phase training approach (pretrain + fine-tune), which significantly improved accuracy.
 
-**Dopasowanie wymiarów do ścian** — pierwszym podejściem było korelowanie rozpoznanej wartości z linią wymiarową (`dimension_line`), a dopiero potem z elementem ściany. Po uzyskaniu średnich efektów przeszedłem do bezpośredniego dopasowania wartości wymiaru do ściany, z pominięciem linii wymiarowej. To uproszczenie przyniosło znacznie lepsze rezultaty.
+**Matching dimensions to walls** — The initial approach was to correlate recognized values with dimension lines (`dimension_line`) and only then with wall elements. After getting mediocre results, I switched to directly matching dimension values to walls, bypassing the dimension line entirely. This simplification yielded significantly better results.
 
-## Narzędzia
+## Tools
 
-Podczas developmentu korzystałem z Claude Code jako narzędzia wspomagającego — architektura pipeline'u, decyzje projektowe i zbieranie danych są mojego autorstwa.
+During development I used Claude Code as an assistive tool — the pipeline architecture, design decisions, and data collection are my own work.
 
-## Instalacja + Szybkie Uruchomienie (generowanie rzutu rzut.dxf)
+## Installation & Quick Start (generating rzut.dxf)
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Wytrenuj lokalny model YOLO (wymaga datasetu w `yolo_dataset/` wyeksportowanego z Roboflow w formacie YOLOv8):
+Train the local YOLO model (requires a dataset in `yolo_dataset/` exported from Roboflow in YOLOv8 format):
 
 ```bash
 python train_yolo.py
 cp runs/detect/yolo_floorplan/weights/best.pt yolo_floorplan.pt
 ```
 
-Uruchomienie:
+Run:
 
 ```bash
 python main.py
 ```
 
-## Opis działania
+## How It Works
 
-System składa się z trzech głównych modułów:
+The system consists of three main modules:
 
-1. **`dataset_creator.py`** — tworzy zbiór danych treningowych z kart odręcznie napisanych cyfr
-2. **`trainer.py`** — trenuje model sieci neuronowej (ResNet18) do rozpoznawania cyfr
-3. **`train_yolo.py`** — trenuje lokalny model YOLOv8 do detekcji elementów rzutu
-4. **`main.py`** — główny pipeline przetwarzający zdjęcie rzutu na plik DXF
+1. **`dataset_creator.py`** — creates training data from sheets of hand-written digits
+2. **`trainer.py`** — trains a neural network model (ResNet18) for digit recognition
+3. **`train_yolo.py`** — trains a local YOLOv8 model for floor plan element detection
+4. **`main.py`** — the main pipeline that processes a floor plan photo into a DXF file
 
-Pipeline wykorzystuje:
+The pipeline uses:
 
-- **YOLOv8 (Ultralytics, lokalnie)** — detekcja ścian, linii wymiarowych i wartości wymiarów na obrazie
-- **Własny model CNN (ResNet18)** — rozpoznawanie odręcznie napisanych cyfr (OCR)
-- **OpenCV** — przetwarzanie obrazu, segmentacja cyfr
-- **ezdxf** — generowanie pliku CAD w formacie DXF
+- **YOLOv8 (Ultralytics, local)** — detects walls, dimension lines, and dimension values in the image
+- **Custom CNN model (ResNet18)** — recognizes hand-written digits (OCR)
+- **OpenCV** — image processing and digit segmentation
+- **ezdxf** — generates the CAD file in DXF format
 
-## Wymagania
+## Requirements
 
 - Python 3.10+
-- Biblioteki wymienione w `requirements.txt`
+- Libraries listed in `requirements.txt`
 
-
-## Struktura projektu
+## Project Structure
 
 ```
-
 projekt-1-inwentaryzacja/
-├── main.py # Główny pipeline (detekcja → OCR → DXF)
-├── train_yolo.py # Trening lokalnego modelu YOLOv8
-├── trainer.py # Skrypt trenowania modelu rozpoznawania cyfr
-├── dataset_creator.py # Tworzenie datasetu z kart z cyframi
-├── requirements.txt # Zależności Pythona
-├── test.jpg # Przykładowy rzut do przetworzenia
-├── digit_ocr_resnet18.pth # Wytrenowany model ResNet18 (~43 MB)
-├── yolo_floorplan.pt # Wytrenowany model YOLOv8 (lokalny)
-├── dane_projektu.json # Wynik detekcji YOLO (bounding boxy, klasy, wartości)
-├── rzut.dxf # Wygenerowany plik CAD
+├── main.py                   # Main pipeline (detection → OCR → DXF)
+├── train_yolo.py             # Local YOLOv8 model training
+├── trainer.py                # Digit recognition model training script
+├── dataset_creator.py        # Dataset creation from digit sheets
+├── requirements.txt          # Python dependencies
+├── test.jpg                  # Sample floor plan for processing
+├── digit_ocr_resnet18.pth    # Trained ResNet18 model (~43 MB)
+├── yolo_floorplan.pt         # Trained YOLOv8 model (local)
+├── dane_projektu.json        # YOLO detection result (bounding boxes, classes, values)
+├── rzut.dxf                  # Generated CAD file
 │
-├── sketches/ # Karty z odręcznymi cyframi (0.jpg–9.jpg)
-├── my_dataset/ # Wycięte próbki cyfr (po ~100 na cyfrę)
-│ ├── 0/ ... 9/
-├── mnist_data/ # Dane MNIST (pobierane automatycznie)
-├── debug_digits/ # Obrazy debugowe — wycięte cyfry z rzutu
-└── roboflow_dataset/ # Odreczne rysowane rysunki rzutów
+├── sketches/                 # Sheets with hand-written digits (0.jpg–9.jpg)
+├── my_dataset/               # Extracted digit samples (~100 per digit)
+│   ├── 0/ ... 9/
+├── mnist_data/               # MNIST data (downloaded automatically)
+├── debug_digits/             # Debug images — digits extracted from the floor plan
+└── roboflow_dataset/         # Hand-drawn floor plan sketches
+```
 
-````
+## Preparing Training Data
 
-## Przygotowanie danych treningowych
+### 1. Preparing digit sheets
 
-### 1. Przygotowanie kart z cyframi
+Place 10 photos in the `sketches/` folder (files `0.jpg` to `9.jpg`), where each photo contains many instances of a given digit written by hand on a sheet of paper.
 
-W folderze `sketches/` umieszczamy 10 zdjęć (pliki `0.jpg` do `9.jpg`), gdzie każde zdjęcie zawiera wiele instancji danej cyfry napisanej odręcznie na kartce.
-
-### 2. Ekstrakcja próbek (`dataset_creator.py`)
+### 2. Extracting samples (`dataset_creator.py`)
 
 ```bash
 python dataset_creator.py
-````
+```
 
-Skrypt przetwarza każdą kartę:
+The script processes each sheet:
 
-- Konwertuje obraz do skali szarości i stosuje binaryzację (Otsu)
-- Wykrywa kontury poszczególnych cyfr
-- Filtruje za małe/za duże kontury
-- Wycina i skaluje każdą cyfrę do rozmiaru 64×64 px
-- Zapisuje próbki w `my_dataset/<cyfra>/`
+- Converts the image to grayscale and applies binarization (Otsu)
+- Detects contours of individual digits
+- Filters out contours that are too small or too large
+- Crops and scales each digit to 64×64 px
+- Saves samples to `my_dataset/<digit>/`
 
-Wynik: ~990 próbek treningowych (po ~100 na każdą cyfrę 0–9).
+Result: ~990 training samples (~100 per digit, 0–9).
 
-## Trenowanie modelu OCR
+## Training the OCR Model
 
 ```bash
 python trainer.py
 ```
 
-Trening przebiega w dwóch fazach:
+Training proceeds in two phases:
 
-### Faza 1 — Pretrening
+### Phase 1 — Pretraining
 
-- Łączy własne dane z podzbiorem MNIST (5000 próbek)
-- Własne dane mają 5× większą wagę niż MNIST
-- 15 epok, Adam, lr=0.0005
+- Combines custom data with a subset of MNIST (5,000 samples)
+- Custom data is weighted 5× higher than MNIST
+- 15 epochs, Adam optimizer, lr=0.0005
 
-### Faza 2 — Fine-tuning
+### Phase 2 — Fine-tuning
 
-- Trening wyłącznie na własnych danych
-- 25 epok, lr=0.0001
+- Training on custom data only
+- 25 epochs, lr=0.0001
 
-**Architektura modelu:**
+**Model architecture:**
 
-- Baza: ResNet18 z modyfikacjami
-- Wejście: 1 kanał (obraz w skali szarości)
-- Wyjście: 10 klas (cyfry 0–9)
-- Regularyzacja: Dropout(0.5)
-- Augmentacja danych: rotacja, pochylenie, perspektywa, rozmycie, zmiana jasności
+- Base: ResNet18 with modifications
+- Input: 1 channel (grayscale image)
+- Output: 10 classes (digits 0–9)
+- Regularization: Dropout(0.5)
+- Data augmentation: rotation, shear, perspective, blur, brightness adjustment
 
-Wynik: plik `digit_ocr_resnet18.pth`.
+Result: `digit_ocr_resnet18.pth` file.
 
-## Uruchomienie głównego pipeline'u
+## Running the Main Pipeline
 
 ```bash
 python main.py
 ```
 
-Program przetworzy plik `test.jpg` i wygeneruje:
+The program processes `test.jpg` and generates:
 
-- `dane_projektu.json` — dane detekcji z rozpoznanymi wartościami
-- `rzut.dxf` — plik CAD z odtworzonym rzutem
-- `debug_digits/` — obrazy pomocnicze do weryfikacji OCR
+- `dane_projektu.json` — detection data with recognized values
+- `rzut.dxf` — CAD file with the reconstructed floor plan
+- `debug_digits/` — auxiliary images for OCR verification
 
-## Opis pipeline'u krok po kroku
+## Pipeline Step by Step
 
-### Krok 1 — Detekcja obiektów (YOLO)
+### Step 1 — Object Detection (YOLO)
 
-Na zdjęciu rzutu lokalny model YOLOv8 (Ultralytics) wykrywa trzy klasy obiektów:
+The local YOLOv8 model detects three object classes in the floor plan photo:
 
-- **Ściany** (`wall`) — prostokątne bounding boxy wokół narysowanych ścian
-- **Linie wymiarowe** (`dimension_line`) — linie ze strzałkami wskazujące wymiar
-- **Wartości wymiarów** (`dimension_value`) — obszary zawierające odręcznie napisane liczby
+- **Walls** (`wall`) — rectangular bounding boxes around drawn walls
+- **Dimension lines** (`dimension_line`) — lines with arrows indicating a dimension
+- **Dimension values** (`dimension_value`) — areas containing hand-written numbers
 
-### Krok 2 — Postprocessing detekcji
+### Step 2 — Detection Post-processing
 
-- **NMS (Non-Maximum Suppression)** — usuwanie nakładających się detekcji
-- **Łączenie sąsiednich wartości** — scalanie podzielonych detekcji wielocyfrowych liczb
+- **NMS (Non-Maximum Suppression)** — removes overlapping detections
+- **Merging adjacent values** — merges split detections of multi-digit numbers
 
-### Krok 3 — Rozpoznawanie cyfr (OCR)
+### Step 3 — Digit Recognition (OCR)
 
-Dla każdej wykrytej wartości wymiaru:
+For each detected dimension value:
 
-1. Wyciągnięcie kanału czerwonego (wymiary rysowane na czerwono)
-2. Binaryzacja progowa
-3. Segmentacja na poszczególne cyfry (analiza projekcji kolumnowej)
-4. Dopasowanie rozmiaru do 64×64 px
-5. Klasyfikacja każdej cyfry przez model ResNet18
-6. Filtracja po pewności (>70%)
-7. Złożenie cyfr w pełną liczbę
+1. Extract the red channel (dimensions drawn in red)
+2. Threshold binarization
+3. Segmentation into individual digits (column projection analysis)
+4. Resize to 64×64 px
+5. Classify each digit using the ResNet18 model
+6. Filter by confidence (>70%)
+7. Assemble digits into a complete number
 
-### Krok 4 — Dopasowanie wymiarów do ścian
+### Step 4 — Matching Dimensions to Walls
 
-- Budowanie grafu ścian: podział na ściany pionowe (V) i poziome (H)
-- Identyfikacja przerw (gaps) między sąsiednimi ścianami
-- Przypisanie rozpoznanych wartości do odpowiednich przerw
-- Estymacja skali (piksele → jednostki rzeczywiste)
+- Build a wall graph: split into vertical (V) and horizontal (H) walls
+- Identify gaps between adjacent walls
+- Assign recognized values to the corresponding gaps
+- Estimate scale (pixels → real-world units)
 
-### Krok 5 — Obliczanie współrzędnych
+### Step 5 — Calculating Coordinates
 
-- Sekwencyjne wyznaczanie pozycji ścian na podstawie wymiarów
-- Oś X: od lewej do prawej (na podstawie przerw H)
-- Oś Y: od góry do dołu (na podstawie przerw V)
+- Sequentially determine wall positions based on dimensions
+- X axis: left to right (based on H gaps)
+- Y axis: top to bottom (based on V gaps)
 
-### Krok 6 — Domykanie rzutu
+### Step 6 — Closing the Floor Plan
 
-- Identyfikacja niepołączonych końców ścian
-- Wykorzystanie nieprzypisanych wymiarów do wydłużenia ścian
-- Rysowanie segmentów domykających
+- Identify unconnected wall endpoints
+- Use unassigned dimensions to extend walls
+- Draw closing segments
 
-### Krok 7 — Eksport do DXF
+### Step 7 — Export to DXF
 
-Generowanie pliku CAD z odcinkami reprezentującymi ściany, kompatybilnego z AutoCAD i innymi programami CAD.
+Generate a CAD file with line segments representing walls, compatible with AutoCAD and other CAD software.
 
-## Pliki wejściowe i wyjściowe
+## Input and Output Files
 
-| Plik                 | Typ     | Opis                                       |
+| File | Type | Description |
 | -------------------- | ------- | ------------------------------------------ |
-| `test.jpg`           | wejście | Zdjęcie/skan rzutu architektonicznego      |
-| `digit_ocr_resnet18.pth`   | model   | Wytrenowany model ResNet18 do OCR          |
-| `dane_projektu.json` | wyjście | Wyniki detekcji YOLO + rozpoznane wartości |
-| `rzut.dxf`           | wyjście | Zrekonstruowany rzut w formacie CAD        |
-| `debug_digits/`      | wyjście | Obrazy debugowe wycietych cyfr             |
+| `test.jpg` | input | Photo/scan of the architectural floor plan |
+| `digit_ocr_resnet18.pth` | model | Trained ResNet18 model for OCR |
+| `dane_projektu.json` | output | YOLO detection results + recognized values |
+| `rzut.dxf` | output | Reconstructed floor plan in CAD format |
+| `debug_digits/` | output | Debug images of extracted digits |
